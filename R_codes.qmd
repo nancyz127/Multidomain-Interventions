@@ -1,0 +1,618 @@
+---
+title: "R codes"
+format: html
+editor: visual
+---
+
+## Impute missing for wave 1-4
+
+```{r}
+#install.packages("gformula")
+#install.packages ("tidyverse")
+library(tidyverse)
+library(gformula)
+
+# impute the missing for wave1-4;
+comb1_4<-read_csv("comb1_4.csv")
+# only keep varialbes not entirely missing
+comb1_4a<-comb1_4 %>%
+select (where (~!all(is.na(.))))
+
+# character variables are due to formating
+# import back will leads to different data type
+# checked the vairables with character are all from w3
+# [1] "MY_AGE_Q_5" "XMARCOH" "MY_FRUITVG" "My_smoke"
+# [5] "MY_NKEM01" "MY_NKEM02" "MY_NKEM03" "MY_AGE_SGP"
+# [9] "VMARCOH" "STATUS" "ZSTATUS"
+
+comb1_4a %>% select (where(is.character)) %>% names()
+
+# variables only available in wave3
+# use new variables for age and marital status
+comb1_4a %>%
+group_by(wave) %>%
+summarize (sum(!is.na (My_FRUITVG)),
+           sum(!is.na (My_smoke)),
+           sum(!is.na(MY_NKEM01)),
+           sum(!is.na(MY_NKEM02)),
+           sum(!is.na (My_NKEM03))
+          )
+
+# only impute the numeric variables
+comb1_4b<-comb1_4a %>% select (where (is.numeric))
+
+comb1_4b %>%
+group_by(wave) %>%
+summarize (across (everything(),
+                   ~sum(!is.na(.))
+           ))
+
+comb1_4_fil1<-comb1_4b %>%
+arrange (id, wave) %>%
+group_by(id) %>%
+fill (everything(), .direction ="down") %>%
+ungroup() %>%
+filter (wave==3)
+
+comb1_4_fill %>%
+   group_by(wave) %>%
+   summarize (across (everything(),
+              ~sum(!is.na(.))
+              ))
+write_csv(comb1_4_fill, "comb1_4_fill.csv", na="")
+```
+
+## Impute missing time-varying covariates
+
+```{r}
+# create missing number for each var
+mydat<-read_csv("merg1.csv")
+
+keep_var <- mydat %>%
+  select(id, wave, age, male, apoe4, edu, income, white, cog_imp_nommse, My_PART,
+MY_PARTTYP)
+
+# impute
+select1 <- read_csv("select1.csv", guess_max = 10000)
+
+select1<-select1 %>%
+arrange (id, wave)
+
+# dummay first down then up
+# numeric take the mean
+mydat_filla<-select1 %>%
+  group_by(id) %>%
+  select(id, wave, current_smk, hv_drink, cvd, depress, mar_cohab, mvpa_calcu,
+sum_pa_all,MY_SBP, MY_BLCHOL, MY_GLUC_F, My_BMI, mind) %>%
+  fill (current_smk, hv_drink, cvd, depress, mar_cohab, .direction = "down") %>%
+  fill (current_smk, hv_drink, cvd, depress, mar_cohab, .direction = "up") %>%
+  fill (mvpa_calcu, sum_pa_all, My_SBP, MY_BLCHOL, MY_GLUC_F, My_BMI, mind, .direction = "down") %>%
+  ungroup ()
+
+
+mydat_fillb<-select1 %>%
+  group_by(id) %>%
+  select(id, wave, current_smk, hv_drink, cvd, depress, mar_cohab, mvpa_calcu,
+sum_pa_all, MY_SBP, MY_BLCHOL, MY_GLUC_F, My_BMI, mind)%>%
+  fill (current_smk, hv_drink, cvd, depress, mar_cohab, .direction = "down") %>%
+  fill (current_smk, hv_drink, cvd, depress, mar_cohab, .direction = "up") %>%
+  fill (mvpa_calcu, sum_pa_all, My_SBP, MY_BLCHOL, MY_GLUC_F, My_BMI, mind,
+.direction ="up") %>%
+  ungroup()
+
+
+mydat_fill <- as.data.frame(mapply(function(x, y) rowMeans (cbind(x, y), na.rm=T),
+mydat_filla, mydat_fillb))
+
+check1<-semi_join(mydat_fill, mydat, by=c("id", "wave"))
+t(check1 %>%
+    group_by(wave) %>%
+    summarize (across (everything(), ~sum(is.na(.)))))
+
+
+# completely missing mind n=2
+length(unique (mydat_fill$id[is.na(mydat_fill$mind)==T]))
+
+# remove 2 people with missing variables
+check2 <- check1 %>%
+  drop_na(mind)
+
+mydat_fill_comp<-inner_join(keep_var, check2, by=c("wave","id"))
+
+t(mydat_fill_comp %>%
+    summarize (across (everything(), ~sum(is.na(.)))))
+
+mydat_fill_comp %>%
+  summarise (n=n_distinct (id))
+
+write_csv(mydat_fill_comp, "mydat_fill_comp.csv", na="")
+
+# create missing number for each var
+n_update<-read_csv("n_update.csv")
+
+update1<-semi_join(mydat, n_update, by=c("id", "wave"))
+
+t(update1 %>%
+    group_by(wave) %>%
+    select (wave, id, mvpa_calcu, sum_pa_all, My_SBP, MY_BLCHOL, MY_GLUC_F, MY_BMI,
+mind, hv_drink, current_smk, cvd, depress, mar_cohab, cog_imp_nommse) %>%
+  summarize (across (everything(), ~sum(is.na(.)))))
+```
+
+## G-formula
+
+### use log(mvpa)
+
+```{r}
+# self-defined intervention function
+# if less than 75min, increase by xx%
+log_pa_less75 <- function (newdf, pool, intvar, intvals, time_name, t)
+{ newdf [get (intvar) < log(75), (intvar) := get(intvar)+ log(intvals[[1]])]
+}
+
+mydat<-read_csv("P:\\yzhang\\whitehall II\\AAIC\\aaic_mydat.csv")
+
+# create to and censoring
+mydat<- mydat %>%
+  mutate(
+    t0 = case_when(
+      wave==5 ~ 0,
+      wave==7 ~ 1,
+      wave==9 ~ 2,
+      wave==11 ~ 3),
+    cc = if_else(is.na(cog_imp_nommse), 1, 0),
+    mvpa150 = if_else(mvpa_calcu>=150, 1, 0),
+    mvpa75 = if_else(mvpa_calcu>=75, 1, 0),
+  )
+
+# income and apoe4 have > 2 levels
+mydat$income<-factor(mydat$income)
+mydat$apoe4<-factor(mydat$apoe4)
+
+#baseline age
+mydat<- mydat %>%
+  group_by(id) %>%
+  mutate (base_age=min(age)) %>%
+  ungroup()
+
+# for mvpa=0, assign a random value ~ unif (1,3)
+
+mydat$mvpa<-mydat$mvpa_calcu
+set.seed(1234)
+mydat$mvpa[mydat $mvpa_calcu==0] <-runif(sum (mydat$mvpa_calcu==0), min=1, max=3)
+mydat$log_mvpa<-log(mydat$mvpa)
+hist(mydat$log_mvpa)
+
+aim1<-gformula(obs_data = mydat,
+               id="id",
+               time_name="t0",
+               time_points = 4,
+               outcome_name = "cog_imp_nommse",
+               outcome_type = "survival",
+               censor_name = "cc",
+               
+               basecovs =c("base_age", "male","apoe4", "edu", "income"),
+               covnames =c("log_mvpa", "mar_cohab", "current_smk", "hv_drink","MY_SBP", "MY_BLCHOL", "MY_GLUC_F", "MY_BMI", "cvd", "depress", "mind"),
+               covtypes = c('normal', rep("binary", 3), rep("normal",4), rep("binary",2), 'normal' ),
+               histories = c(lagged),
+               histvars = list(c("log_mvpa", "mar_cohab", "current_smk","hv_drink"
+,"MY_SBP", "MY_BLCHOL", "MY_GLUC_F", "MY_BMI", "cvd", "depress", "mind")),
+               covparams= list(
+                 covmodels = c(
+                   log_mvpa ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab+ lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   mar_cohab ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   
+                     current_smk~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   hv_drink ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                  
+                   
+                   My_SBP ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   My_BLCHOL ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   My_GLUC_F ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   MY_BMI ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   cvd ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   depress ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL + lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     lag1_depress,
+                   
+                   mind~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     lag1_mind +
+                     log_mvpa + lag1_log_mvpa +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL + lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress
+                 )),
+                   
+                ymodel = "cog_imp_nommse ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + mar_cohab + current_smk+ hv_drink + mind + log_mvpa + My_SBP + MY_BLCHOL+ MY_GLUC_F + My_BMI + cvd + depress",
+               censor_model = "cc ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as. factor(income) + mar_cohab + current_smk+ hv_drink + mind + log_mvpa + My_SBP + MY_BLCHOL+ MY_GLUC_F + My BMI + cvd + depress",
+          
+               intervention1.log_mvpa = list(threshold, log(150), Inf),
+               intervention2.1og_mvpa = list(threshold, log(75), Inf),
+               intervention3.1og_mvpa = list(log_pa_less75, 1.1),
+               intervention4.1og_mvpa = list(log_pa_less75, 1.2),
+               
+               intervention5.mind = list(threshold, 8.5, Inf),
+               intervention6.current_smk = list(static, rep(0,4)),
+               intervention7.hv_drink = list(static, rep(0,4)),
+
+               intervention8.log_mvpa = list(threshold, log(150), Inf),
+               intervention8.mind = list(threshold, 8.5, Inf),
+
+               intervention9.log_mvpa = list(threshold, log(150), Inf),
+               intervention9.current_smk = list(static, rep(0,4)),
+
+               intervention10.log_mvpa = list(threshold, log(150), Inf),
+               intervention10.hv_drink = list(static, rep(0,4)),
+
+               intervention11.current_smk = list(static, rep(0,4)),
+               intervention11.hv_drink = list(static, rep(0,4)),
+
+               intervention12.log_mvpa = list(threshold, log(150), Inf),
+               intervention12.current_smk = list(static, rep(0,4)),
+               intervention12.hv_drink = list(static, rep (0,4)),
+
+               intervention13.log_mvpa = list(threshold, log(150), Inf),
+               intervention13.mind = list(threshold, 8.5, Inf),
+               intervention13.current_smk = list(static, rep(0,4)),
+
+               intervention14.log_mvpa = list(threshold, log(150), Inf),
+               intervention14.mind = list(threshold, 8.5, Inf),
+               intervention14.current_smk = list(static, rep(0,4)),
+               intervention14.hv_drink = list(static, rep(0,4)),
+
+               intervention15.My_SBP = list(threshold, -Inf,130),
+
+               intervention16.My_BLCHOL = list(threshold, -Inf, 6.18),
+
+               intervention17.My_GLUC_F = list(threshold, -Inf, 5.6),
+
+               intervention18.My_BMI = list(threshold, 18.5, 25),
+
+               intervention19.My_SBP = list(threshold, -Inf,130),
+               intervention19.My_GLUC_F = list(threshold, -Inf, 5.6),
+
+               intervention20.My_SBP = list(threshold, -Inf,130),
+               intervention20.My_BLCHOL = list(threshold, -Inf, 6.18),
+               intervention20.My_GLUC_F = list(threshold, -Inf, 5.6),
+               intervention20.My_BMI = list(threshold, 18.5, 25),
+
+               intervention21.1og_mvpa = list(threshold, log (150), Inf),
+               intervention21.My_SBP = list(threshold, -Inf,130),
+
+               intervention22.1og_mvpa = list(threshold, log(150), Inf),
+               intervention22.My_BLCHOL = list(threshold, -Inf, 6.18),
+
+               intervention23.log_mvpa = list(threshold, log(150), Inf),
+               intervention23.My_GLUC_F = list(threshold, -Inf, 5.6),
+
+               intervention24.1og_mvpa = list(threshold, log(150), Inf),
+               intervention24.My_BMI = list(threshold, 18.5, 25),
+
+               intervention25.1og_mvpa = list(threshold, log(150), Inf),
+               intervention25.My_SBP = list(threshold, -Inf,130),
+               intervention25.My_BLCHOL = list(threshold, -Inf, 6.18),
+               intervention25.My_GLUC_F = list(threshold, -Inf, 5.6),
+               intervention25.My_BMI = list(threshold, 18.5, 25),
+
+               intervention26.log_mvpa = list(threshold, log(150), Inf),
+               intervention26.mind = list(threshold, 8.5, Inf),
+               intervention26.current_smk = list(static, rep(0,4)),
+               intervention26.hv_drink = list(static, rep(0,4)),
+               intervention26.My_SBP = list(threshold, -Inf,130),
+               intervention26.My_BLCHOL = list(threshold, -Inf, 6.18),
+               intervention26.My_GLUC_F = list(threshold, -Inf, 5.6),
+               intervention26.My_BMI = list(threshold, 18.5, 25),
+
+               intervention27.1og_mvpa = list(threshold, log(150), Inf),
+               intervention27.mind = list(threshold, 8.5, Inf),
+               intervention27.current_smk = list(static, rep(0,4)),
+               intervention27.My_SBP = list(threshold, -Inf,130),
+               intervention27.My_BLCHOL = list(threshold, -Inf, 6.18),
+               intervention27.My_GLUC_F = list(threshold, -Inf, 5.6),
+               intervention27.My_BMI = list(threshold, 18.5, 25),
+
+               nsimul = 1000,
+               nsamples =3050,
+               seed= 1234)
+               
+save.image (file = "intv_log_pa. RData")
+```
+
+### use binary (150) , similar for binary(75)
+
+```{r}
+aim2<-gformula(obs_data = mydat,
+               id="id",
+               time_name="t0",
+               time_points = 4,
+               outcome_name = "cog_imp_nommse",
+               outcome_type = "survival",
+               censor_name = "cc",
+               
+               basecovs =c("base_age", "male","apoe4", "edu", "income"),
+               covnames =c("mvpa150", "mar_cohab", "current_smk", "hv_drink","MY_SBP", "MY_BLCHOL", "MY_GLUC_F", "MY_BMI", "cvd", "depress", "mind"),
+               covtypes = c('binary', rep("binary", 3), rep("normal",4), rep("binary",2), 'normal' ),
+               histories = c(lagged),
+               histvars = list(c("mvpa150", "mar_cohab", "current_smk","hv_drink"
+,"MY_SBP", "MY_BLCHOL", "MY_GLUC_F", "MY_BMI", "cvd", "depress", "mind")),
+               covparams= list(
+                 covmodels = c(
+                   mvpa150 ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab+ lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   mar_cohab ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   
+                     current_smk~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   hv_drink ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                  
+                   
+                   My_SBP ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   My_BLCHOL ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   My_GLUC_F ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   MY_BMI ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   cvd ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL +lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     lag1_cvd +
+                     depress + lag1_depress,
+                   
+                   depress ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     mind + lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL + lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     lag1_depress,
+                   
+                   mind~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + 
+                     mar_cohab + lag1_mar_cohab + 
+                     current_smk + lag1_current_smk + 
+                     hv_drink + lag1_hv_drink + 
+                     lag1_mind +
+                     mvpa150 + lag1_mvpa150 +
+                     My_SBP + lag1_My_SBP +
+                     My_BLCHOL + lag1_My_BLCHOL+
+                     My_GLUC_F + lag1_My_GLUC_F_+
+                     MY_BMI + lag1_MY_BMI +
+                     cvd + lag1_cvd +
+                     depress + lag1_depress
+                 )),
+                   
+                ymodel = "cog_imp_nommse ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as.factor(income) + mar_cohab + current_smk+ hv_drink + mind + mvpa150 + My_SBP + MY_BLCHOL+ MY_GLUC_F + My_BMI + cvd + depress",
+               censor_model = "cc ~ as.factor(t0) + base_age + male + as.factor(apoe4) + edu + as. factor(income) + mar_cohab + current_smk+ hv_drink + mind + mvpa150 + My_SBP + MY_BLCHOL+ MY_GLUC_F + My BMI + cvd + depress",
+          
+               intervention1.mvpa150 = list(static, rep(0,4)),
+               intervention2.mvpa150 = list(static, rep(1,4)),
+
+               
+               nsimul = 1000,
+               nsamples =3050,
+               seed= 1234)
+```
