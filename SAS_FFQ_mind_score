@@ -1,0 +1,315 @@
+/*----------------------------*/
+/*            FFQ            */
+/*Out: aaic.ffq3_11           */
+/*----------------------------*/
+%let file = s3ffq_0281.sav; %import_spss;
+%let file = s5ffq_0281_S.sav; %import_spss;
+%let file = s7ffq_0281_S.sav; %import_spss;
+%let file = s9ffq_0281_S.sav; %import_spss;
+%let file = s11ffq_0281_S.sav; %import_spss;
+
+/*W3*/
+proc sql noprint;
+	select cats ("My_", name), cats ('X', name, "=", "My_", name) into :quest_new 
+		separated by ' ', :quest_rename separated by ' ' from dictionary.columns 
+		where libname='WORK' and memname="FOOD_NAMES";
+quit;
+
+DATA ffq3;
+	set s3ffq_0281;
+	xsprouts=xsprout;
+	xsavpies=xsavpie;
+	xwhpasta=xwhpast;
+	xpeanutb=xpeanub;
+	xbeefbur=xbeefbu;
+	xbatfish=xbatfis;
+	wave=3;
+run;
+
+DATA ffq3;
+	set ffq3 (rename=(&quest_rename));
+	id=input (id_random_DPUK, best32.);
+	keep id &quest_new wave;
+run;
+
+/*w5*/
+proc sql noprint;
+	select cats ("My_", name), cats ('t', name, "=", "My_", name) into :quest_new 
+		separated by ' ', :quest_rename separated by ' ' from dictionary.columns 
+		where libname='WORK' and memname="FOOD NAMES";
+quit;
+
+DATA ffq5;
+	set s5ffq_0281_s (rename=(&quest_rename));
+	id=input (id_random_DPUK, best32.);
+	wave=5;
+	keep id &quest_new wave;
+run;
+
+/*w7*/
+proc sql noprint;
+	select cats ("My_", name), cats ('m', name, "=", "My_", name) into :quest new 
+		separated by ' ', :quest_rename separated by ' ' from dictionary.columns 
+		where libname='WORK' and memname="FOOD_NAMES";
+quit;
+
+DATA ffq7;
+	set s7ffq_0281_s (rename=(&quest_rename));
+	id=input (id_random_DPUK, best32.);
+	wave=7;
+	keep id &quest_new wave;
+run;
+
+/*w9*/
+proc sql noprint;
+	select cats ("My_", name), cats ('j', name, "=", "My_", name) into :quest_new 
+		separated by ' ', :quest_rename separated by ' 'from dictionary.columns 
+		where libname='WORK' and memname="FOOD_NAMES";
+quit;
+
+DATA ffq9;
+	set s9ffq_0281_s (rename=(&quest_rename));
+	id=input (id_random_DPUK, best32.);
+	wave=9;
+	keep id &quest_new wave;
+run;
+
+/*combine w3,5,7,9*/
+data ffq3_9;
+	set ffq3 ffq5 ffq7 ffq9;
+run;
+
+data ffq3_9a;
+	set ffq3_9;
+
+	/*red meat*/
+	array vars[53] My_beef My_pork My_lamb My_bacon My_ham My_cornbf My_sausag 
+		My_savpies My_liver my wholbrd my_brice my_whpasta my_spinach my greens 
+		my_leeks my_salad My carrots My broccol My_sprouts My_cabbage My_peas My 
+		beans My_marrow My_caulifl My_parsnip My_onions My_mushroo My peppers 
+		My_tomato My whifish My_oilfish My_shefish My bakedb My_lentils My_tofu My 
+		nuts My peanutb My beefbur My_batfish My_fishfin My butter My hardmar My 
+		cheese My_cotche My biscuit My_cakes My_buns My_tarts My_milkpud My sponge 
+		My_icecrea My_choc My_sweets;
+	array recode[53] beef pork lamb bacon ham cornbf sausag savpies liver wholbrd 
+		brice whpasta spinach greens leeks salad carrots broccol sprouts cabbage peas 
+		beans marrow caulifl parsnip onions mushroo peppers tomato whifish oilfish 
+		shefish bakedb lentils tofu nuts peanutb beefbur batfish fishfin butter 
+		hardmar cheese cotche biscuit cakes buns tarts milkpud sponge icecrea choc 
+		sweets;
+
+	do i=1 to 53;
+
+		select (vars[i]);
+			when (1) recode[i]=0;
+			when (2) recode[i]=2/4.35;
+			when (3) recode[i]=1;
+			when (4) recode[i]=3;
+			when (5) recode[i]=5.5;
+			when (6) recode[i]=7;
+			when (7) recode[i]=2.5*7;
+			when (8) recode[i]=4.5*7;
+			when (9) recode[i]=6.5*7;
+			otherwise recode[i]=.;
+		end;
+	end;
+	red_meat_sum=sum(of beef pork lamb bacon ham cornbf sausag savpies liver);
+
+	if 6<red_meat_sum then red_meat=0;
+	else if 4<red_meat_sum<=6 then red_meat=0.5;
+	else if 0<=red_meat_sum<=4 then red_meat=1;
+	
+/* whole grain	 */
+	whole_grain_sum=sum (of wholbrd brice whpasta);
+
+	if 0<=whole_grain_sum<7 then whole_grain=0;
+	else if 7<=whole_grain_sum <=14 then whole_grain=0.5;
+	else if 14<whole_grain_sum then whole_grain=1;
+	
+/* leafy	 */
+	leafy_sum=sum (of spinach greens leeks salad);
+
+	if 0<=leafy_sum<=2 then leafy=0;
+	else if 2<leafy_sum<=6 then leafy=0.5;
+	else if 6<leafy_sum then leafy=1;
+	
+/* veg 	 */
+	veg_sum=sum (of carrots broccol sprouts cabbage peas beans marrow caulifl 
+		parsnip onions mushroo peppers tomato);
+
+	if 0<=veg_sum<5 then veg=0;
+	else if 5<=veg_sum<=6 then veg=0.5;
+	else if 6<veg_sum then veg=1;
+
+/*berry  */
+	if my_strawb in (1, 2) then berry=0;
+	else if my_strawb=3 then berry=0.5;
+	else if 4<=my_strawb then berry=1;
+	
+/* fish 	 */
+	fish_sum=sum (of whifish oilfish shefish);
+
+	if 0<=fish_sum <0.23 then fish=0;
+	else if 0.23<=fish_sum <1 then fish=0.5;
+	else if 1<=fish_sum then fish=1;
+
+/* poultry */
+	if My_chick in (1, 2) then poultry=0;
+	else if My_chick=3 then poultry=0.5;
+	else if 4<=My_chick<=9 then poultry=1;
+	
+/*beans 	 */
+	beans_sum=sum (of bakedb lentils tofu);
+
+	if 0<=beans_sum<1 then beans=0;
+	else if 1<=beans_sum<=3 then beans=0.5;
+	else if 3<beans_sum then beans=1;
+	
+/* nuts	 */
+	nuts_sum=sum(of nuts peanutb);
+
+	if 0<=nuts_sum<0.23 then nuts=0;
+	else if 0.23<=nuts_sum<5 then nuts=0.5;
+	else if 5<=nuts_sum then nuts=1;
+	
+/*fried 	 */
+	fried_sum=sum (of beefbur batfish fishfin);
+
+	if 3 < fried_sum then fried=0;
+	else if 1 <=fried_sum <=3 then fried=0.5;
+	else if 0 <=fried_sum < 1 then fried=1;
+	
+/* butter	 */
+	butter_sum=sum(of butter hardmar);
+
+	if 14 <butter_sum then butter=0;
+	else if 7<=butter_sum<=14 then butter=0.5;
+	else if 0<=butter_sum<7 then butter=1;
+	
+/* cheese	 */
+	cheese_sum=sum(of cheese cotche);
+
+	if 0<=cheese_sum<1 then cheese=0;
+	else if 1<=cheese_sum<=6 then cheese=0.5;
+	else if 6<cheese_sum then cheese=1;
+	
+/* sweet	 */
+	sweet_sum=sum(of biscuit cakes buns tarts milkpud sponge icecrea choc sweets);
+
+	if 6<sweet_sum then sweet=0;
+	else if 5<=sweet_sum<=6 then sweet=0.5;
+	else if 0<=sweet_sum<5 then sweet=1;
+
+/* wine */
+	if My_wine=1 then wine=0;
+	else if 2<=My_wine<=5 then wine=0.5;
+	else if 6<=My_wine<=9 then wine=1;
+	
+/* mind score	 */
+	mind=sum (of whole_grain red_meat leafy veg berry fish poultry beans nuts 
+		fried butter cheese sweet wine);
+	keep id wave mind;
+run;
+
+/*w11*/
+proc contents data=s11ffq_0281_s order=varnum;
+run;
+
+proc sql noprint;
+	select cats ("My_", name), cats ('f', name, "=", "My_", name) into :quest_new 
+		separated by ' ', :quest_rename separated by ' 'from dictionary.columns where 
+		libname='WORK' and memname="FOOD_NAMES";
+quit;
+
+
+DATA ffq11;
+	set siiffq_0281_s;
+	id=input (id_random_DPUK, best32.);
+	wave=11;
+	array vars[15] FHAMOTH FLIVER FREDMEAT FBACSAUS FBWHPASR FBWHBRD FFISHFIN 
+		FBATFISH FBUTTER FMARSPRD FCONFECT FCHOCSWE FICECREA FPEALEGU FSOYA;
+	array recode[15] HAMOTH LIVER REDMEAT BACSAUS BWHPASR BWHBRD FISHFIN BATFISH 
+		BUTTER MARSPRD CONFECT CHOCSWE ICECREA PEALEGU SOYA;
+
+	do i=1 to 15;
+
+		select (vars[i]);
+			when (1) recode[i]=0;
+			when (2) recode[i]=2/4.35;
+			when (3) recode[i]=1;
+			when (4) recode[i]=3;
+			when (5) recode[i]=5.5;
+			when (6) recode[i]=7;
+			when (7) recode[i]=2.5*7;
+			when (8) recode [i] 4.5*7;
+			when (9) recode [i]=6.5*7;
+			otherwise recode[i]=.;
+		end;
+	end;
+/*red meat 	 */
+	red_meat_sum=sum(of HAMOTH LIVER REDMEAT BACSAUS);
+	if 6<red_meat_sum then red_meat=0;
+	else if 4<red_meat_sum<=6 then red_meat=0.5;
+	else if 0<=red_meat_sum<=4 then red_meat=1;
+	whole_grain_sum=sum (of BWHPASR BWHBRD);
+/*whole grain  */
+	if 0<=whole_grain_sum<7 then whole_grain=0;
+	else if 7<=whole_grain_sum <=14 then whole_grain=0.5;
+	else if 14<whole_grain_sum then whole_grain=1;
+/*fish  */
+	if FFISH=1 then fish=0;
+	else if FFISH-2 then fish=0.5;
+	else if 3<=FFISH<=9 then fish=1;
+/*fried 	 */
+	fried_sum=sum (of FISHFIN BATFISH);
+	if 3 < fried_sum then fried=0;
+	else if 1 <=fried_sum <=3 then fried=0.5;
+	else if 0<=fried_sum < 1 then fried=1;
+/*poultry  */
+	if FCHICK in (1, 2) then poultry=0;
+	else if FCHICK=3 then poultry=0.5;
+	else if 4<=FCHICK<=9 then poultry=1;
+/*chesse  */
+	if 6<=FCHEESE<=9 then cheese=0;
+	else if FCHEESE in (3, 4, 5) then cheese=0.5;
+	else if FCHEESE in (1, 2) then cheese=1;
+/*butter 	 */
+	butter_sum=sum(of BUTTER MARSPRD);
+	if 14 <butter_sum then butter=0;
+	else if 7<=butter_sum<=14 then butter=0.5;
+	else if 0<=butter_sum<7 then butter=1;
+/*sweet 	 */
+	sweet_sum=sum (of CONFECT CHOCSWE ICECREA);
+	if 6<sweet sum then sweet=0;
+	else if 5<=sweet_sum<=6 then sweet=0.5;
+	else if 0<=sweet_sum<5 then sweet=1;
+/*nuts  */
+	if FNUTS=1 then nuts=0;
+	else if FNUTS in (2, 3, 4) then nuts=0.5;
+	else if 5<=FNUTS<-9 then nuts=1;
+/*beans 	 */
+	beans_sum=sum (of FPEALEGU FSOYA);
+	if 0<=beans_sum<1 then beans=0;
+	else if 1<=beans_sum<=3 then beans=0.5;
+	else if з<beans_sum then beans=1;
+/*olive oil  */
+	if FOLIVOIL in (1, 2) then olive=0;
+	else if FOLIVOIL in (3, 4, 5) then olive-0.5;
+	else if FOLIVOIL in (6, 7, 8, 9) then olive=1;
+/* veg */
+	if 1<=FVEGS<=4 then veg=0;
+	else if FVEGS=5 then veg=0.5;
+	else if 6<=FVEGS then veg=1;
+/*wine  */
+	if FWINE=1 then wine=0;
+	else if 2<=FWINE<=5 then wine=0.5;
+	else if 6<=FWINE<=9 then wine=1;
+	
+	mind=sum (of wine veg olive beans nuts sweet butter cheese poultry fried fish 
+		whole_grain red meat) /13*14;
+	keep id wave mind;
+run;
+
+data aaic.ffq3_11;
+	set ffq3_9a ffq11;
+run;
