@@ -1,7 +1,3 @@
-/*combine w3-w12*/
-data comb; set w3 w5 w7 w9 w11 w12; run;
-
-
 /*alcohol*/
 data tmp;
 	set comb;
@@ -11,7 +7,7 @@ data tmp;
 	else if My_NONDRNK=1 then hv_drink=0;
 	keep id wave hv_drink;
 run;
-
+/*missing hv_drink, impute from FFQ*/
 data tmp2;
 	set tmp;
 	keep id wave;
