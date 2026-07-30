@@ -1,4 +1,84 @@
-/*alcohol*/
+/*******************calculated MVPA variables in 2011 paper**************/
+data tmp0;
+set S3quest_0281_s;
+id=input(id_random_DPUK, best32.);
+keep id XMILDHRS XVIGHRS;
+run;
+
+%let file = PA_APOE_ver3update_S.sav; %import_spss;
+
+data tmp1;
+set PA_APOE_ver3update_5;
+id=input(id_random_DPUK, best32.);
+keep id XMODHRS
+TMODHR_S TVIGHR_S
+mMODHR_S mVIGHR_S
+jMODHR_S jVIGHR_S
+FMODHR_S FVIGHR_S;
+run;
+
+data tmp2;
+set add_july;
+id = random_id_DPUK;
+keep id
+TMILHR_S
+MMILHR S
+JMILHR_S
+FMILHR_S
+DMILHR_S DMODHR_S DVIGHR_S;
+run;
+
+proc sort data=tmp0; by id;
+proc sort data=tmp1; by id;
+proc sort data=tmp2; by id;
+
+data pa2011;
+merge tmp tmp1 tmp2;
+by id;
+run;
+
+data pa_calcu;
+	set pa2011;
+	id=id_random_DPUK;
+/* moderate +vigorous */
+	mvpa5=sum (TMODHR_S, TVIGHR_S)*60;
+	mvpa7=sum (mMODHR_S, mVIGHR_S)*60;
+	mvpa9=sum (jMODHR_S, jVIGHR_S)*60;
+	mvpall=sum (FMODHR_S, VIGHR_S)*60;
+/* light+ moderate +vigorous */
+	lmvpa5=sum (TMILHR_S, TMODHR_S, TVIGHR_S)*60;
+	lmvpa7=sum (MMILHR_S,mMODHR_S, mVIGHR_S)*60;
+	lmvpa9=sum (JMILHR_S, jMODHR_S, jVIGHR_S)*60;
+	lmvpall=sum (FMILHR_S, FMODHR_S, VIGHR_S)*60;
+	keep id mvpa5 mvpa7 mvpa9 mvpa11 lmvpa5 lmvpa7 lmvpa9 lmvpa11;
+run;
+
+proc sort data=pa_calcu; by id; run;
+proc transpose data=pa_calcu out-pa_calcu_long1 name=varname;
+	by id;
+	var mvpa3 mvpa5 mvpa7 mvpa9 mvpa11 mvpa12;
+run;
+
+data pa_calcu_long1;
+	set pa_calcu_long1;
+	wave=input(compress (varname, 'kd'), 8.);
+	mvpa_calcu=col1;
+	keep id wave mvpa_calcu;
+run;
+
+proc transpose data=pa_calcu out-pa_calcu_long2 name=varname;
+	by id;
+	var lmvpa3 lmvpa5 lmvpa7 lmvpa9 lmvpa11 lmvpa12;
+run;
+
+data pa_calcu_long2;
+	set pa_calcu_long2;
+	wave=input(compress (varname, 'kd'), 8.);
+	lmvpa_calcu=col1;
+	keep id wave lmvpa_calcu;
+run;
+
+/***********************alcohol********************/
 data tmp;
 	set comb;
 	drink_unit=sum (of My_BEERWKO, My_SPRTWKO, My_WINEWKO);
@@ -68,12 +148,22 @@ data aaic.alchol;
 	by id wave;
 run;
 
+/* merge into PA, alcohol, baseline variable, apoe */
 proc sort data=comb; by id wave; run;
+
+proc sort data=pa_calcu_long1; 	by wave id; run;
+proc sort data=pa_calcu_long2; 	by wave id; run;
+
 proc sort data=aaic.ffq3_11; by id wave; run;
 proc sort data=aaic.alchol; by id wave; run;
 
+proc sort data=aaic.apoe; by id; run;
+
 data comb1;
-	merge comb (in=a) aaic.ffq3_11 aaic.alchol;
+	merge comb (in=a) 
+	pa_calcu_long1 pa_calcu_long2 
+	aaic.ffq3_11 aaic.alchol
+	aaic.apoe;
 	by id wave;
 	if a;
 run;
@@ -102,73 +192,17 @@ data aaic.comb1;
 	/*cognitive*/
 	if 0<=my_mm_scor< 24 then cog1=1;
 	else if my_mm_scor>=24 then cog1=0;
+
+		keep id wave age male mar_cohab
+		mvpa_calcu lmvpa_calcu 
+		mind current_smk hv_drink cvd depress  
+		my_mm_scor cog1 my_animals my_SWORDS my_MEM my_AH4 my_MH 
+		my_sbp my_blchol my_bmi my_gluc_f 
+		My_PART My_PARTTYP;
 run;
 
-/*calculated MVPA variables in 2011 paper*/
-data pa_calcu;
-	set PA_APOE_ver3update_S;
-	id=id_random_DPUK;
-/* moderate +vigorous */
-	mvpa5=sum (TMODHR_S, TVIGHR_S)*60;
-	mvpa7=sum (mMODHR_S, mVIGHR_S)*60;
-	mvpa9=sum (jMODHR_S, jVIGHR_S)*60;
-	mvpall=sum (FMODHR_S, VIGHR_S)*60;
-/* light+ moderate +vigorous */
-	lmvpa5=sum (TMILHR_S, TMODHR_S, TVIGHR_S)*60;
-	lmvpa7=sum (MMILHR_S,mMODHR_S, mVIGHR_S)*60;
-	lmvpa9=sum (JMILHR_S, jMODHR_S, jVIGHR_S)*60;
-	lmvpall=sum (FMILHR_S, FMODHR_S, VIGHR_S)*60;
-	keep id mvpa5 mvpa7 mvpa9 mvpa11 lmvpa5 lmvpa7 lmvpa9 lmvpa11;
-run;
 
-proc sort data=pa_calcu; by id; run;
-proc transpose data=pa_calcu out-pa_calcu_long1 name=varname;
-	by id;
-	var mvpa3 mvpa5 mvpa7 mvpa9 mvpa11 mvpa12;
-run;
-
-data pa_calcu_long1;
-	set pa_calcu_long1;
-	wave=input(compress (varname, 'kd'), 8.);
-	mvpa_calcu=col1;
-	keep id wave mvpa_calcu;
-run;
-
-proc transpose data=pa_calcu out-pa_calcu_long2 name=varname;
-	by id;
-	var lmvpa3 lmvpa5 lmvpa7 lmvpa9 lmvpa11 lmvpa12;
-run;
-
-data pa_calcu_long2;
-	set pa_calcu_long2;
-	wave=input(compress (varname, 'kd'), 8.);
-	lmvpa_calcu=col1;
-	keep id wave lmvpa_calcu;
-run;
-
-proc sort data=pa_calcu_long1; 	by wave id; run;
-proc sort data=pa_calcu_long2; 	by wave id; run;
-proc sort data=update.comb1d;  by wave id; run;
-
-data comb1d;
-	merge update.comb1d(in=a) pa_calcu_long1 pa_calcu_long2;
-	by wave id;
-	keep id wave age pa sum_pa sum_pa_all mvpa_calcu lmvpa_calcu fruit_veg mind 
-		current_smk hv_drink cvd depress mar_cohab my_mm_scor cog1 my_animals 
-		my_SWORDS my_MEM my_AH4 my_MH my_sbp my_blchol my_bmi my_gluc_f My_PART 
-		My_PARTTYP;
-	if a;
-run;
-
-proc sort data=aaic.apoe; by id; run;
-proc sort data=comb1d; by id; run;
-
-data comb1e;
-	merge comb1d (in=a) aaic.base aaic.apoe;
-	by id;
-	if a;
-run;
-
+/******************************* outcome*********************************** */
 /*standarize test scores*/
 proc sort data=comble; 	by wave; run;
 
@@ -208,8 +242,7 @@ data comb_stdl;
 	else cog_imp=0;
 run;
 
-
-/*Run the following codes separately using two definitions*/
+/********Run the following codes separately using two definitions********/
 %let out=cog_imp_nommse;
 %let out=cog_imp;
 
