@@ -151,6 +151,14 @@ run;
 proc import datafile='P:\yzhang\Whitehall II\AAIC\new_dat_noNA.csv' out=new_data dbms=csv replace; 	getnames=yes;
 run;
 
+proc import datafile='P: \yzhang\Whitehall II\Data\0281_DATASET_additional_July25_noNA.csv' out=add_july dbms-csv replace;
+getnames=yes; guessingrows = max; run;
+
+data add_july;
+set add_july;
+id=id_random_DPUK;
+run;
+
 /*w5*/
 %let file = s5quest_0281_S.sav; %import_spss;
 %let file = s5screen_0281_S.sav; %import_spss;
