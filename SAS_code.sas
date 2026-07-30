@@ -1,62 +1,14 @@
-
-
 /*combine w3-w12*/
-data combl; set w3 w5 w7 w9 w11 w12; run;
+data comb; set w3 w5 w7 w9 w11 w12; run;
 
-/*ignore the labels in the print out
-frequency: none-0, 1-2 = 1, 3-4-2, 5-10-3, 11-15 -4 16-20-5 21+=6*/
-data combla_recode;
-	set comb1;
-	array w5fvars {*} My_SOCCERF My_golff My_swimf My_sportif My_sport2f My_weedf 
-		My_mowf My_gardnlf My_carwasf My_paidecf My_diylf My PHYSA1f My_PHYSA2f My 
-		carryhf My_cookf My_hangwf My_houswlf My_housw2f;
-	array w5hvars{*} My_SOCCERh My_golfh My_swimh My_sportih My_sport2h My weedh 
-		My_mowh My_gardnih My_carwash My_paidech My_diylh My PHYSA1h My PHYSA2h 
-		My_carryhh My_cookh My_hangwh My_houswih My_housw2h;
-
-	if wave=5 then
-		do;
-
-			do i=1 to dim (w5fvars);
-				w5fvars[i]=w5fvars[i] -1;
-				w5hvars[i]=w5hvars[i] -1;
-			end;
-		end;
-run;
-
-/*length: mins/wk*/
-data comb1b;
-	set combla_recode;
-	%convert (My_soccerh);
-	%convert (My_golfh);
-	%convert (My_swimh);
-	%convert (My_sportih);
-	%convert (My_sport2h);
-	%convert (My weedh);
-	%convert (My_mowh) %convert (My_gardnih);
-	%convert (My_carwash);
-	%convert (My_paidech);
-	%convert (My_diy1h);
-	%convert (My_PHYSA1H);
-	%convert (My PHYSA2H);
-	%convert (My_carryhh);
-	%convert (My cookh);
-	%convert (My hangwh);
-	%convert (My_houswih);
-	%convert (My_housw2h);
-run;
 
 /*alcohol*/
 data tmp;
-	set comb1b;
+	set comb;
 	drink_unit=sum (of My_BEERWKO, My_SPRTWKO, My_WINEWKO);
-
-	if drink_unit> 14 then
-		hv_drink=1;
-	else if 0<=drink_unit<14 then
-		hv_drink=0;
-	else if My_NONDRNK=1 then
-		hv_drink=0;
+	if drink_unit> 14 then hv_drink=1;
+	else if 0<=drink_unit<14 then hv_drink=0;
+	else if My_NONDRNK=1 then hv_drink=0;
 	keep id wave hv_drink;
 run;
 
@@ -79,30 +31,22 @@ data ffq_drk2;
 	keep id wave FBEER FLIQUALL FWINE;
 run;
 
-proc sort data=tmp2;
-	by id wave;
-
-proc sort data=ffq_drkl;
-	by id wave;
-
-proc sort data=ffq_drk2;
-	by id wave;
+proc sort data=tmp2; by id wave;
+proc sort data=ffq_drkl; by id wave;
+proc sort data=ffq_drk2; by id wave;
 
 data tmp2a;
 	merge tmp2 (in=a) ffq_drk1 ffq_drk2;
 	by id wave;
-
 	if a;
 run;
 
 data tmp2b;
 	set tmp2a;
 	array vars[8] My_beer My_liqu My_port My_spirits My_wine FBEER FLIQUALL FWINE;
-	array recode[8] My_beer1 My_liqul My_port1 My_spirits1 My_winel FBEER1 
-		FLIQUALL1 FWINE1;
+	array recode[8] My_beer1 My_liqul My_port1 My_spirits1 My_winel FBEER1 FLIQUALL1 FWINE1;
 
 	do i=1 to 8;
-
 		select (vars[i]);
 			when (1) recode[i]=0;
 			when (2) recode [i]=2/4.35;
@@ -116,13 +60,10 @@ data tmp2b;
 			otherwise recode[i]=.;
 		end;
 	end;
-	alc_sum=sum (of My_beer1 My_liqul My_port1 My_spirits1 My_winel FBEER1 
-		FLIQUALL1 FWINE1);
+	alc_sum=sum (of My_beer1 My_liqul My_port1 My_spirits1 My_winel FBEER1 FLIQUALL1 FWINE1);
 
-	if 14<=alc_sum then
-		hv_drink=1;
-	else if 0 <=alc_sum<14 then
-		hv_drink=0;
+	if 14<=alc_sum then hv_drink=1;
+	else if 0 <=alc_sum<14 then hv_drink=0;
 	keep id wave hv_drink;
 run;
 
@@ -131,65 +72,40 @@ data aaic.alchol;
 	by id wave;
 run;
 
-proc sort data=comb1b;
-	by id wave;
-run;
+proc sort data=comb; by id wave; run;
+proc sort data=aaic.ffq3_11; by id wave; run;
+proc sort data=aaic.alchol; by id wave; run;
 
-proc sort data=aaic.ffq3_11;
+data comb1;
+	merge comb (in=a) aaic.ffq3_11 aaic.alchol;
 	by id wave;
-run;
-
-proc sort data=aaic.alchol;
-	by id wave;
-run;
-
-data comb1c;
-	merge combib (in=a) aaic.ffq3_11 aaic.alchol;
-	by id wave;
-
 	if a;
 run;
 
-data aaic.combid;
-	set combic;
+data aaic.comb1;
+	set comb1;
 	age=My_AGE_C;
 	
 	/*smoke*/
 	if my_esmoke =3 then current_smk=1;
-	else if my_esmoke in (1 2) then
-		current_smk=0;
+	else if my_esmoke in (1 2) then current_smk=0;
 
 	/*cvd*/
-	if cvd4=1 then
-		cvd=1;
-
-	if cvd4=0 then
-		cvd=0;
-
-	if my_ANG=1 or my_MI=1 or my_STRDIAG in (1, 2) or my_OHT=1 then
-		cvd=1;
-
-	if my_ANG=2 and my _MI-2 and mY_STRDIAG not in (1, 2) and my_OHT=2 then
-		cvd=0;
+	if my_ANG=1 or my_MI=1 or my_STRDIAG in (1, 2) or my_OHT=1 then cvd=1;
+	if my_ANG=2 and my _MI-2 and mY_STRDIAG not in (1, 2) and my_OHT=2 then cvd=0;
 
 	/*depress_anxiety*/
-	if my_NKEM01=1 OR my_NKEM02=1 or my_NKEM03=1 then
-		depress=1;
-	else if my _NKEM01-2 and my_NKEM02=2 and my_NKEM03-2 then
-		depress=0;
+	if my_NKEM01=1 OR my_NKEM02=1 or my_NKEM03=1 then depress=1;
+	else if my _NKEM01-2 and my_NKEM02=2 and my_NKEM03-2 then depress=0;
 
 	/*marital*/
 	/*for wave 5-12*/
-	if my_statusx=1 then
-		mar_cohab=1;
-	else if my_statusx in (3, 4, 5) then
-		mar_cohab=0;
+	if my_statusx=1 then mar_cohab=1;
+	else if my_statusx in (3, 4, 5) then mar_cohab=0;
 
 	/*cognitive*/
-	if 0<=my_mm_scor< 24 then
-		cog1=1;
-	else if my_mm_scor>=24 then
-		cog1=0;
+	if 0<=my_mm_scor< 24 then cog1=1;
+	else if my_mm_scor>=24 then cog1=0;
 run;
 
 /*calculated MVPA variables in 2011 paper*/
