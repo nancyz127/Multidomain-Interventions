@@ -1,5 +1,4 @@
-LIBNAME aaic'P:\yzhang\Whitehall II\AAIC';
-RUN;
+LIBNAME aaic'P:\yzhang\Whitehall II\AAIC'; RUN;
 %let path = P:\yzhang\Whitehall II\Data;
 
 /*A few macros*/
@@ -8,21 +7,8 @@ RUN;
 			/* Dataset name from the filename without .sav */
 			dbms=sav replace;
 	run;
-
 %mend;
 
-/*will use the 2011 calculated MVPA but as to July 2025,
-the requested mild PA not available yet, so will calculate total PA using variables below.
-Then then mild_moderate = total vigrous_2011_calculated; */
-data pa_names;
-	input WLKOUTA WLKOUTB PEDCYCA PEDCYCB SOCCERF SOCCERH GOLFF GOLFH SWIMF SWIMH 
-		SPORT1 SPORTIF SPORT1H SPORT2 SPORT2F SPORT2H WEEDF WEEDH MOWF MOWH GARDN1 
-		GARDN1F GARDN1H CARRYHF CARRYHH COOKF COOKH HANGWF HANGWH HOUSW1 HOUSW1F 
-		HOUSW1H HOUSW2 HOUSW2F HOUSW2H CARWASF CARWASH PAIDECF PAIDECH DIY DIY1F 
-		DIY1H PHYSA1 PHYSA1F PHYSA1H PHYSA2 PHYSA2F PHYSA2H;
-	cards;
-;
-run;
 
 	/**let file=HES_0281_S_ver2; import_spss;*/
 	/*rename*/
@@ -62,42 +48,7 @@ DATA food_names;
 ;
 run;
 
-	/* Conversion of duration data into duration of activity involves attribution of */
-	/* the mid-point duration for every category. */
-	%macro convert(var1);
-		/*duration in mins*/
-		if &var1=0 then
-			&var1=0/4*60;
-
-		if &var1=1 then
-			&var1=0.5/4*60;
-
-		if &var1=2 then
-			&var1=1.25/4*60;
-
-		if &var1=3 then
-			&var1=2.5/4*60;
-
-		if &var1=4 then
-			&var1=4.5/4*60;
-
-		if &var1=5 then
-			&var1=8/4*60;
-
-		if &var1=6 then
-			&var1=12/4*60;
-	%mend;
-
-	/*keep variables*/
-	%macro select_var(dat_ori, dat_new);
-	data &dat_new;
-		set &dat_ori;
-		keep wave id age male white edu income apoe4 sum_pa_all_recode mvpa_calcu mar 
-			cohab fruit_veg mind current smk hv drink cvd depress bp chol bmi_g dm_g 
-			cog_imp cog_imp_nommse my_sbp my_blchol my_bmi my_gluc_f;
-	run;
-
-%mend;
+	
 
 /*cognitive impairment*/
 %macro cog_test(dat, var1, var2);
@@ -616,45 +567,33 @@ run;
 /* -------------------combine wave 5-12  -------------------*/
 /*  -------------------out: comble  -------------------*/
 /*new requested variables*/
-proc import datafile='P:\yzhang\Whitehall II\AAIC\new_dat_noNA.csv' 
-		out=new_data dbms=csv replace;
+proc import datafile='P:\yzhang\Whitehall II\AAIC\new_dat_noNA.csv' out=new_data dbms=csv replace;
 	getnames=yes;
 run;
 
-/*PA */
-
-%let file = PA_APOE_ver3update_S.sav;
-%import_spss;
-
 /*w5*/
-%let file = s5quest_0281_S.sav;
-%import_spss;
-%let file = s5screen_0281_S.sav;
-%import_spss;
+%let file = s5quest_0281_S.sav; %import_spss;
+%let file = s5screen_0281_S.sav; %import_spss;
 
-/*baseline: age, sex, ethnivity, education martial*/
+/*baseline: age, sex, ethnicity, education, income*/
 data aaic.base;
 	set s5quest_0281_S;
 	id=input (id_random_DPUK, best32.);
 
 	/*sex*/
-	if sex=1 then
-		male=1;
-
-	if sex=2 then
-		male=0;
+	if sex=1 then male=1;
+	if sex=2 then male=0;
 
 	/*ethnicity*/
-	if ETHN_DS=1 then
-		white=1;
-	else if ETHN_DS=2 then
-		white=0;
+	if ETHN_DS=1 then white=1;
+	else if ETHN_DS=2 then white=0;
 	edu=TEDTOTYR;
 	income=TINCHH4;
 	keep id white male edu income;
 run;
 
 /*APOE*/
+%let file = PA_APOE_ver3update_S.sav; %import_spss;
 data aaic.APOE;
 	set PA_APOE_ver3update_S;
 	id=input (id_random_DPUK, best32.);
@@ -682,60 +621,34 @@ proc sql noprint;
 quit;
 
 /*rename*/
-DATA QUEST5;
-	set s5quest_0281_S (rename=(&quest_rename));
-	id=input (id_random_DPUK, best32.);
+DATA QUEST5; set s5quest_0281_S (rename=(&quest_rename));
+	id=input(id_random_DPUK, best32.);
 	keep id &quest_new;
 run;
 
-DATA screen5;
-	set s5screen_0281_S (rename=(&screen_rename));
-	id=input (id_random_DPUK, best32.);
+DATA screen5; set s5screen_0281_S (rename=(&screen_rename));
+	id=input(id_random_DPUK, best32.);
 	keep id &screen_new;
 run;
 
-data empty;
-	input id_random_DPUK &retain_name;
+data empty; input id_random_DPUK &retain_name;
 	cards;
 ;
 run;
 
-proc sort data=new_data;
-	by id_random_DPUK;
+proc sort data=new_data; by id_random_DPUK; run;
+data tmp1; merge empty new_data; by id_random_DPUK; run;
+data add5; set tmp1 (rename=(&add_rename)); id=input (id_random_DPUK, best32.); keep id &add_new; run;
+
+proc sort data=quest5; by id;
+proc sort data=screen5; by id;
+proc sort data=add5; by id;
 run;
-
-data tmp1;
-	merge empty new_data;
-	by id_random_DPUK;
-run;
-
-data add5;
-	set tmp1 (rename=(&add_rename));
-	id=input (id_random_DPUK, best32.);
-	keep id &add_new;
-run;
-
-proc sort data-quest5;
-	by id;
-
-proc sort data=screen5;
-	by id;
-
-proc sort data=add5;
-	by id;
-run;
-
-data w5;
-	merge quest5 screen5 add5;
-	by id;
-	wave=5;
-run;
+data w5; merge quest5 screen5 add5; by id; 	wave=5; run;
 
 /*w7*/
-%let file = 87quest_0281_S.sav;
-%import_spss;
-%let file = 87screen_0281_S.sav;
-%import_spss;
+%let file = 87quest_0281_S.sav; %import_spss;
+%let file = 87screen_0281_S.sav; %import_spss;
 
 proc sql noprint;
 	select cats ("My_", name), cats ('m', name, "=", "My_", name) into :quest_new 
@@ -757,30 +670,24 @@ proc sql noprint;
 		where libname='WORK' and memname="ADD_NAMES";
 quit;
 
-DATA QUEST7;
-	set s7quest_0281_S (rename=(&quest_rename));
+DATA QUEST7; set s7quest_0281_S (rename=(&quest_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &quest_new;
 run;
 
-DATA screen7;
-	set s7screen_0281_S (rename=(&screen_rename));
+DATA screen7; set s7screen_0281_S (rename=(&screen_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &screen_new;
 run;
 
-data empty;
-	input id_random_DPUK &retain_name;
+data empty; input id_random_DPUK &retain_name;
 	cards;
 ;
 run;
 
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
+proc sort data=new_data; by id_random_DPUK; run;
 
-data tmp1;
-	merge empty new_data;
+data tmp1; merge empty new_data;
 	by id_random_DPUK;
 run;
 
@@ -790,14 +697,9 @@ data add7;
 	keep id &add_new;
 run;
 
-proc sort data=quest7;
-	by id;
-
-proc sort data=screen7;
-	by id;
-
-proc sort data=add7;
-	by id;
+proc sort data=quest7; by id;
+proc sort data=screen7; by id;
+proc sort data=add7; by id;
 run;
 
 data w7;
@@ -807,10 +709,8 @@ data w7;
 run;
 
 /*w9*/
-%let file = s9quest_0281_S.sav;
-%import_spss;
-%let file = s9screen_0281_S.sav;
-%import_spss;
+%let file = s9quest_0281_S.sav; %import_spss;
+%let file = s9screen_0281_S.sav; %import_spss;
 
 proc sql noprint;
 	select cats ("My_", name), cats ('J', name, "=", "My_", name) into :quest_new 
@@ -831,50 +731,38 @@ proc sql noprint;
 		where libname='WORK' and memname="ADD_NAMES";
 quit;
 
-DATA QUEST9;
-	set s9quest_0281_S (rename=(&quest_rename));
+DATA QUEST9; set s9quest_0281_S (rename=(&quest_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &quest_new;
 run;
 
-DATA screen9;
-	set 39screen_0281_S (rename=(&screen_rename));
+DATA screen9; set 39screen_0281_S (rename=(&screen_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &screen_new;
 run;
 
-data empty;
-	input id_random_DPUK &retain_name;
+data empty; input id_random_DPUK &retain_name;
 	cards;
 ;
 run;
 
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
+proc sort data=new_data; by id_random_DPUK; run;
 
-data tmp1;
-	merge empty new_data;
-	by id_random_DPUK;
-run;
+data tmp1; merge empty new_data; by id_random_DPUK; run;
 
-data add9;
-	set tmp1 (rename=(&add_rename));
+data add9; set tmp1 (rename=(&add_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &add_new;
 run;
 
-data w9;
-	merge quest9 screen9 add9;
+data w9; merge quest9 screen9 add9;
 	by id;
 	wave=9;
 run;
 
 /*w11*/
-%let file = s11quest_0281_S.sav;
-%import_spss;
-%let file = s11screen_0281_S.sav;
-%import_spss;
+%let file = s11quest_0281_S.sav; %import_spss;
+%let file = s11screen_0281_S.sav; %import_spss;
 
 proc sql noprint;
 	select cats ("My_", name), cats ('F', name, "=", "My_", name) into :quest new 
@@ -896,27 +784,22 @@ proc sql noprint;
 		where libname='WORK' and memname="ADD_NAMES";
 quit;
 
-DATA QUEST11;
-	set s1lquest_0281_S (rename=(&quest_rename));
+DATA QUEST11; set s1lquest_0281_S (rename=(&quest_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &quest_new;
 run;
 
-DATA screen11;
-	set sllscreen_0281_S (rename=(&screen_rename));
+DATA screen11; set sllscreen_0281_S (rename=(&screen_rename));
 	id=input (id_random_DPUK, best32.);
 	keep id &screen_new;
 run;
 
-data empty;
-	input id_random_DPUK &retain_name;
+data empty; input id_random_DPUK &retain_name;
 	cards;
 ;
 run;
 
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
+proc sort data=new_data; by id_random_DPUK; run;
 
 data tmp1;
 	merge empty new_data;
@@ -936,10 +819,8 @@ data w11;
 run;
 
 /*w12*/
-%let file = s12quest_0281_S.sav;
-%import_spss;
-%let file = s12screen_0281_S.sav;
-%import_spss;
+%let file = s12quest_0281_S.sav; %import_spss;
+%let file = s12screen_0281_S.sav; %import_spss;
 
 proc sql noprint;
 	select cats ("My_", name), cats ('D', name, "=", "My_", name) into :quest new 
@@ -978,9 +859,7 @@ data empty;
 ;
 run;
 
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
+proc sort data=new_data; by id_random_DPUK; run;
 
 data tmp1;
 	merge empty new_data;
@@ -1000,10 +879,8 @@ data w12;
 run;
 
 /*W3*/
-%let file = s3quest_0281_S.sav;
-%import_spss;
-%let file = s3screen_0281_5.sav;
-%import_spss;
+%let file = s3quest_0281_S.sav; %import_spss;
+%let file = s3screen_0281_5.sav; %import_spss;
 
 proc sql noprint;
 	select cats ("My_", name), cats ('X', name, "=", "My_", name) into :quest_new 
@@ -1043,9 +920,7 @@ data empty;
 ;
 run;
 
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
+proc sort data=new_data; by id_random_DPUK; run;
 
 data tmp1;
 	merge empty new_data;
@@ -1058,138 +933,10 @@ data add3;
 	keep id &add_new;
 run;
 
-/*w4*/
-%let file = s4quest_0281_S.sav;
-%import_spss;
-
-data quest4_cvd;
-	set s4quest_0281_S;
-
-	/*cvd*/
-	if VANG=1 or vMI=1 or vSTR=1 or VOHT=1 then
-		cvd4=1;
-
-	if VANG=2 and vMI=2 and VSTR=2 and VOHT=2 then
-		cvd4=0;
-	id=input (id_random_DPUK, best32.);
-	keep id cvd4 VMARCOH;
-run;
-
-/*w1 and w2*/
-%let file = s2quest_0281_S.sav;
-%import_spss;
-
-data s2;
-	set s2quest_0281_S;
-	id=input (id_random_DPUK, best32.);
-	keep id ZSTATUS;
-run;
-
-proc sql noprint;
-	select cats ("My_", name), cats ('Z', name, "=", "My_", name), cats ('Z', 
-		name) into :add_new separated by ' ', :add_rename separated by ' ', 
-		:retain_name separated by ' 'from dictionary.columns 
-		where libname='WORK' and memname="ADD_NAMES";
-quit;
-
-data empty;
-	input id_random_DPUK &retain_name;
-	cards;
-;
-run;
-
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
-
-data tmp1;
-	merge empty new_data;
-	by id_random_DPUK;
-run;
-
-data add2;
-	set tmp1 (rename=(&add_rename));
-	id=input (id_random_DPUK, best32.);
-	wave=2;
-	keep id &add_new wave;
-run;
-
-/*W1*/
-%let file = s1quest_0281_S.sav;
-%import_spss;
-
-data s1;
-	set s1quest_0281_S;
-	id=input (id_random_DPUK, best32.);
-	keep id STATUS;
-run;
-
-proc sql noprint;
-	select cats ("My_", name), cats (name, "=", "My_", name), cats (name) 
-		into :add_new separated by ' ', : add_rename separated by ' ', :retain_name 
-		separated by ' 'from dictionary.columns 
-		where libname='WORK' and memname="ADD_NAMES";
-quit;
-
-data empty;
-	input id_random_DPUK &retain_name;
-	cards;
-;
-run;
-
-proc sort data=new_data;
-	by id_random_DPUK;
-run;
-
-data tmp1;
-	merge empty new_data;
-	by id_random_DPUK;
-run;
-
-data add1;
-	set tmp1 (rename=(&add_rename));
-	id=input (id_random_DPUK, best32.);
-	wave=1;
-	keep id &add_new wave;
-run;
-
-/*combine w3 and 4 here for imputation purpose, let wave=3*/
-data w3_4;
-	merge quest3 screen3 quest4 cvd s1 s2 add3;
+data w3;
+	merge quest3 screen3 add3;
 	by id;
 	wave=3;
-run;
-
-data comb1_4;
-	set add1 add2 w3_4;
-run;
-
-/*impute the missing in R*/
-proc export data=comb1_4 outfile='P:\yzhang\Whitehall II\AAIC\comb1_4.csv' 
-		dbms=csv replace;
-run;
-
-proc import datafile="P:\yzhang\Whitehall II\AAIC\comb1_4_fill.csv" 
-		out=comb1_4_fill dbms=csv replace;
-	guessingrows=max;
-run;
-
-/*marital status, using my_statusx*/
-data comb1_4_char;
-	set comb1_4;
-	keep id wave My AGE_Q_5 My_FRUITVG My_smoke My_NKEM01 My_NKEM02 My_NKEM03;
-	where wave=3;
-run;
-
-proc sort data=comb1_4_char;
-	by id wave;
-
-proc sort data=comb1_4_fill;
-	by id wave;
-
-data comb1_4_fill_all;
-	merge comb1_4_char comb1_4_fill;
-	by id wave;
 run;
 
 /*combine w5-w12*/
@@ -1356,124 +1103,9 @@ run;
 data aaic.combid;
 	set combic;
 	age=My_AGE_C;
-
-	/*cycle*/
-	cycle=sum(My_PEDCYCA*5, My_PEDCYCB*2);
-
-	/*soccer*/
-	if My_SOCCERF=0 and My_soccerh=. then
-		soccer=0;
-	else
-		soccer=My_soccerh;
-
-	/*golf*/
-	if My_golff=0 and My_golfh=. then
-		golf=0;
-	else
-		golf=My_golfh;
-
-	/*swim*/
-	if My_swimf=0 and My_swimh=. then
-		swim=0;
-	else
-		swim=My_swimh;
-
-	/*spt1*/
-	if My_sportif=0 and My_sportih=. then
-		spt1=0;
-	else
-		spt1=My_sportih;
-
-	/*spt2*/
-	if My_sport2f=0 and My_sport2h=. then
-		spt2=0;
-	else
-		spt2=My_sport2h;
-
-	/*weed*/
-	if My_weedf=0 and My_weedh=. then
-		weed=0;
-	else
-		weed=My_weedh;
-
-	/*mow*/
-	if My_mowf=0 and My_mowh=. then
-		mow=0;
-	else
-		mow=My_mowh;
-
-	/*tgardnih*/
-	if My_gardn1f=0 and My_gardn1h=. then
-		garden=0;
-	else
-		garden=My_gardn1h;
-
-	/*carwash*/
-	if My_carwasf=0 and My_carwash=. then
-		carwash=0;
-	else
-		carwash=My_carwash;
-
-	/*pdec*/
-	if My_paidecf=0 and My_paidech=. then
-		pdec=0;
-	else
-		pdec=My_paidech;
-
-	/*diy*/
-	if My_diylf=0 and My_diylh=. then
-		diy=0;
-	else
-		diy=My_diylh;
-
-	/*additional*/
-	if My PHYSA1f=0 and My_PHYSA1H=. then
-		physal=0;
-	else
-		physal=My_PHYSA1H;
-
-	if My PHYSA2f=0 and My_PHYSA2H=. then
-		physa2=0;
-	else
-		physa2=My_PHYSA2H;
-
-	/*walk*/
-	walk=sum (My_wlkouta*5, My_wlkoutb*5);
-
-	/*carry*/
-	if My_carryhf=0 and My_carryhh=. then
-		carry=0;
-	else
-		carry=My_carryhh;
-
-	/*cook*/
-	if My_cookf=0 and My_cookh=. then
-		cook=0;
-	else
-		cook=My_cookh;
-
-	/*hang*/
-	if My_hangwf=0 and My_hangwh=. then
-		hang=0;
-	else
-		hang=My_hangwh;
-
-	/*house*/
-	if My_houswif=0 and My_houswih=. then
-		house1=0;
-	else
-		house1=My_houswih;
-
-	if My_housw2f=0 and My_housw2h=. then
-		house2=0;
-	else
-		house2=My_housw2h;
-	sum_pa_all=sum(cycle, soccer, golf, swim, spti, spt2, weed, mow, garden, 
-		carwash, pdec, diy, physal, physa2, walk, carry, cook, hang, housel, house2);
-
+	
 	/*smoke*/
-	if my_esmoke 3 then
-		current_smk=1;
+	if my_esmoke =3 then current_smk=1;
 	else if my_esmoke in (1 2) then
 		current_smk=0;
 
@@ -1514,66 +1146,69 @@ run;
 data pa_calcu;
 	set PA_APOE_ver3update_S;
 	id=id_random_DPUK;
+/* moderate +vigorous */
 	mvpa5=sum (TMODHR_S, TVIGHR_S)*60;
 	mvpa7=sum (mMODHR_S, mVIGHR_S)*60;
 	mvpa9=sum (jMODHR_S, jVIGHR_S)*60;
 	mvpall=sum (FMODHR_S, VIGHR_S)*60;
-	keep id mvpa5 mvpa7 mvpa9 mvpa11;
+/* light+ moderate +vigorous */
+	lmvpa5=sum (TMILHR_S, TMODHR_S, TVIGHR_S)*60;
+	lmvpa7=sum (MMILHR_S,mMODHR_S, mVIGHR_S)*60;
+	lmvpa9=sum (JMILHR_S, jMODHR_S, jVIGHR_S)*60;
+	lmvpall=sum (FMILHR_S, FMODHR_S, VIGHR_S)*60;
+	keep id mvpa5 mvpa7 mvpa9 mvpa11 lmvpa5 lmvpa7 lmvpa9 lmvpa11;
 run;
 
-proc sort data=pa_calcu;
+proc sort data=pa_calcu; by id; run;
+proc transpose data=pa_calcu out-pa_calcu_long1 name=varname;
 	by id;
+	var mvpa3 mvpa5 mvpa7 mvpa9 mvpa11 mvpa12;
 run;
 
-proc transpose data=pa_calcu out=pa_calcu_long name=varname;
-	by id;
-	var mvpa5 mvpa7 mvpa9 mvpall;
-run;
-
-data pa_calcu_long;
-	set pa_calcu_long;
-	wave=input (compress (varname, , 'kd'), 8.);
+data pa_calcu_long1;
+	set pa_calcu_long1;
+	wave=input(compress (varname, 'kd'), 8.);
 	mvpa_calcu=col1;
 	keep id wave mvpa_calcu;
 run;
 
-proc sort data=pa_calcu_long;
-	by wave id;
+proc transpose data=pa_calcu out-pa_calcu_long2 name=varname;
+	by id;
+	var lmvpa3 lmvpa5 lmvpa7 lmvpa9 lmvpa11 lmvpa12;
 run;
 
-proc sort data=aaic.combid;
-	by wave id;
+data pa_calcu_long2;
+	set pa_calcu_long2;
+	wave=input(compress (varname, 'kd'), 8.);
+	lmvpa_calcu=col1;
+	keep id wave lmvpa_calcu;
 run;
+
+proc sort data=pa_calcu_long1; 	by wave id; run;
+proc sort data=pa_calcu_long2; 	by wave id; run;
+proc sort data=update.comb1d;  by wave id; run;
 
 data comb1d;
-	merge aaic.combid (in a) pa_calcu_long;
+	merge update.comb1d(in=a) pa_calcu_long1 pa_calcu_long2;
 	by wave id;
-	keep id wave age sum_pa_all mvpa_calcu fruit_veg mind current_smk hv_drink cvd 
-		depress mar_cohab bp chol obesity dm my_mm_scor cog1 my_animals my_SWORDS 
-		my_MEM my_AH4 my MH cvd4 my_sbp my_blchol my_bmi my_gluc_f My_PART MY_PARTTYP;
-
+	keep id wave age pa sum_pa sum_pa_all mvpa_calcu lmvpa_calcu fruit_veg mind 
+		current_smk hv_drink cvd depress mar_cohab my_mm_scor cog1 my_animals 
+		my_SWORDS my_MEM my_AH4 my_MH my_sbp my_blchol my_bmi my_gluc_f My_PART 
+		My_PARTTYP;
 	if a;
 run;
 
-proc sort data=aaic.apoe;
-	by id;
-run;
+proc sort data=aaic.apoe; by id; run;
+proc sort data=comb1d; by id; run;
 
-proc sort data=combid;
+data comb1e;
+	merge comb1d (in=a) aaic.base aaic.apoe;
 	by id;
-run;
-
-data comble;
-	merge combid (in=a) aaic.base aaic.apoe;
-	by id;
-
 	if a;
 run;
 
 /*standarize test scores*/
-proc sort data=comble;
-	by wave;
-run;
+proc sort data=comble; 	by wave; run;
 
 proc stdize data=comble out=comb_std;
 	by wave;
@@ -1600,75 +1235,23 @@ run;
 data comb_stdl;
 	set comb_std;
 
-	/*defl: MMSE + OTHER*/
-	if sum(of cog1, cog2, cog3, cog4, cog5, cog6) >=1 then
-		cog_imp=1;
-	else if cogl=. and cog2=. and cog3=. and cog4=. and cog5=. and cog6=. then
-		cog_imp=.;
-	else
-		cog_imp=0;
-
-	/*DEF2: OTHER*/
-	if sum (of cog2, cog3, cog4, cog5, cog6) >=1 then
-		cog_imp_nommse=1;
-	else if cog2=. and cog3=. and cog4=. and cog5=. and cog6=. then
-		cog_imp_nommse=.;
-	else
-		cog_imp_nommse=0;
+	/*def1: main analysis*/
+	if sum (of cog2, cog3, cog4, cog5, cog6) >=1 then cog_imp_nommse=1;
+	else if cog2=. and cog3=. and cog4=. and cog5=. and cog6=. then cog_imp_nommse=.;
+	else cog_imp_nommse=0;
+	
+	/*def2: def1 + MMSE, sensitivity analysis*/
+	if sum(of cog1, cog2, cog3, cog4, cog5, cog6) >=1 then cog_imp=1;
+	else if cogl=. and cog2=. and cog3=. and cog4=. and cog5=. and cog6=. then cog_imp=.;
+	else cog_imp=0;
 run;
 
-proc freq data=comb_std1;
-	table wave* (cog_imp cog_imp_nommse);
-run;
 
-proc means data=comb_std1;
-	class wave;
-	var cog1 my_mm_scor;
-run;
-
-/*Sensitivity analysis, change outcome to first def1: cog_imp*/
+/*Run the following codes separately using two definitions*/
 %let out=cog_imp_nommse;
+%let out=cog_imp;
 
-/*check pattern of cog*/
-data outcome;
-	set comb_std1;
-	keep id wave &out;
-run;
-
-proc sort data=outcome;
-	by id;
-
-proc transpose data=outcome out wide_out prefix=wave_;
-	by id;
-	id wave;
-	var &out;
-run;
-
-data pattern;
-	set wide_out;
-	array tvars{*} wave_:;
-	length pattern $10;
-	pattern='';
-
-	do i=1 to dim (tvars);
-
-		if missing (tvars[i]) then
-			pattern=cats (pattern, "M");
-
-		/* else pattern cats (pattern, 'o'); */
-		else if tvars[i]=1 then
-			pattern=cats (pattern, '1');
-		else if tvars[i]=0 then
-			pattern=cats (pattern, '0');
-	end;
-run;
-
-proc freq data=pattern;
-	tables pattern/nocum;
-run;
-
-/*miss w5 but has w3, imput cog at w5 by at w3
-n=359*/
+/*******miss w5 but has w3, imput cog at w5 by at w3*/
 proc sql;
 	create table w3_5 as select id, &out as w3_cog from comb_stdl 
 	where id in (select pattern.id from pattern where substr(pattern, 1, 2) in ('OM' '1M')) and wave=3;
@@ -1677,67 +1260,34 @@ quit;
 data comb_std2;
 	merge comb_std1 (in=a) w3_5;
 	by id;
-
 	if a;
 run;
 
 data comb_std3;
 	set comb_std2;
-
-	if wave=5 and &out=. then
-		&out=w3_cog;
+	if wave=5 and &out=. then &out=w3_cog;
 run;
-
-proc freq data=comb_std3;
-	table wave* &out;
-run;
-
-proc freq data=comb_std3;
-	table My_PART MY_PARTTYP;
-	where wave=5 and &out=w3_cog and w3_cog^=.;
-run;
-
-/*check*/
+/* include/exclude */
 proc sql;
-	select count (distinct id) as n from comb_std3 where &out=. and age^. and 
-		wave=5;
-quit;
-
-proc sql;
-	select count (distinct id) as n from comb_std3 where &out^=. and age=. and 
-		wave=5;
-quit;
-
-proc freq data=comb_std3;
-	table wave*my_parttyp;
-	where age^=.;
-run;
-
-proc sql;
-	create table select_id5 as select distinct id from comb_std3 
-	where wave=5 and 45<=age<=64 and &out=0 and apoe4^. and edu^. and income^=.;
+	create table select_id3 as select distinct id from comb_std3 
+	where wave=5 and 
+		45<=age<=64 and &out=0 and my_part=1 and mvpa_calcu^=. and mind^=. and current_smk^=. and hv_drink^=. and 
+		my_sbp^=. and my_blchol^=. and my_bmi^=. and my_gluc_f^=.;
 quit;
 
 proc sql;
 	create table select1 as select * from comb_std3 where id in (select 
-		select_id5.id from select_id5);
+		select_id3.id from select_id3);
 quit;
 
-proc sql;
-	select distinct wave, my_parttyp, count (distinct id) from select1 group by 
-		wave, my_parttyp;
-quit;
-
-/*cog_imp patterns*/
+/*outcome missing patterns across waves, M if missing and o if observed*/
 data outcome;
 	set select1;
 	keep id wave &out;
 	where wave^=3;
 run;
 
-proc sort data=outcome;
-	by id;
-
+proc sort data=outcome; by id;
 proc transpose data=outcome out=wide_out prefix=wave_;
 	by id;
 	id wave;
@@ -1747,18 +1297,12 @@ run;
 data pattern;
 	set wide out;
 	array tvars{*} wave_:
-length pattern $10;
+    length pattern $10;
 	pattern='';
 
 	do i=1 to dim (tvars);
-
-		if missing (tvars[i]) then
-			pattern=cats (pattern, "M");
-		else
-			pattern cats (pattern, 'o');
-
-		/* else if tvars[i]= 1 then pattern = cats (pattern, '1');  */
-		/* else if tvars[i]= 0 then pattern = cats (pattern, '0'); */
+		if missing (tvars[i]) then pattern=cats (pattern, "M");
+		else pattern cats (pattern, 'o');
 	end;
 run;
 
@@ -1766,7 +1310,7 @@ proc freq data=pattern order=freq;
 	tables pattern;
 run;
 
-/*not impute cog_imp, keep until the first missing*/
+/*********** keep covariates according to the missing outcome pattern********/
 proc sql;
 	create table m_1 as select * from (select * from select1 (drop=cog_imp cog_imp_nommse)) 
 		where id in (select pattern.id from pattern where pattern in ('ooooo' 'ooooM')) and wave in (5, 7, 9, 11);
@@ -1784,14 +1328,12 @@ QUIT;
 
 proc sql;
 	create table m_4 as select * from (select * from select1 (drop=cog_imp cog_imp_nommse)) 
-	where id in (select pattern.id from pattern where pattern in ('oMooo', 'oMMMM', 'OMMoo', 'oMooM', 'oMMMo', 'oMoMM')) and wave in (5);
+	where id in (select pattern.id from pattern where pattern in ('oMooo', 'oMMMM', 'OMMoo', 'oMooM', 'oMMMo', 'oMoMM', 'oMMoM','oMoMo')) and wave in (5);
 QUIT;
 
-data covars;
-	set m_1 m_2 m_3 m_4;
-run;
+data covars; set m_1 m_2 m_3 m_4; run;
 
-/*outcome*/
+/******** keep outcome according to the missing pattern*********/
 proc sql;
 	create table yl as select id, wave, &out from select1 
 	where id in (select pattern.id from pattern where pattern in ('ooooo' 'ooooM')) and wave in (7,	9, 11, 12);
@@ -1799,178 +1341,119 @@ QUIT;
 
 proc sql;
 	create table y2 as select id, wave, &out from select1 
-	where id in (select pattern.id from pattern where pattern in ('oooMM' 'oooMo')) and wave in (7, 
-		9, 11);
+	where id in (select pattern.id from pattern where pattern in ('oooMM' 'oooMo')) and wave in (7, 9, 11);
 QUIT;
 
 proc sql;
 	create table y3 as select id, wave, &out from select1 
-	where id in (select pattern.id from pattern where pattern in ('ooMMM' 'ooMMo' 'ooMoM' 'ooMoo')) 
-		and wave in (7, 9);
+	where id in (select pattern.id from pattern where pattern in ('ooMMM' 'ooMMo' 'ooMoM' 'ooMoo')) and wave in (7, 9);
 QUIT;
 
 proc sql;
 	create table v4 as select id, wave, &out from select1 
-	where id in (select pattern.id from pattern where pattern in ('oMooo', 'oMMMM', 'oMMoo', 'oMooM', 
-		'oMMMo', 'oMoMM')) and wave in (7);
+	where id in (select pattern.id from pattern where pattern in ('oMooo', 'oMMMM', 'oMMoo', 'oMooM', 'oMMMo', 'oMoMM', 'oMMoM','oMoMo')) and wave in (7);
 QUIT;
 
 data ys;
 	set y1 y2 y3 y4;
-
-	if wave=7 then
-		wave=5;
-	else if wave=9 then
-		wave=7;
-	else if wave=11 then
-		wave=9;
-	else if wave=12 then
-		wave=11;
+	if wave=7 then wave-5;
+	else if wave=9 then wave=7;
+	else if wave=11 then wave=9;
+	else if wave=12 then wave=11;
 run;
 
-proc sort data=covars;
-	by id wave;
+/******** combine covariates and outcome ************/
+proc sort data=covars; 	by id wave;
+proc sort data=ys; by id wave;
+data merg1; merge covars ys; by id wave; run;
 
-proc sort data=ys;
-	by id wave;
-
-data merg1;
-	merge covars ys;
-	by id wave;
+/* when  %let out=cog_imp_nommse*/
+data merg1_select_nommse;
+	set merg1;
+	keep wave id &out
+        age male white edu income apoe4 mar_cohab sum_pa sum_pa_all mvpa_calcu lmvpa_calcu 
+        fruit_veg mind current_smk hv_drink cvd depress my_sbp my_blchol my_bmi my_gluc_f;
 run;
 
-/*check for missing */
-proc means data=merg1 n nmiss;
+/* when %let out=cog_imp */
+data merg1_select;
+	set merg1;
+	keep wave id &out
+        age male white edu income apoe4 mar_cohab sum_pa sum_pa_all mvpa_calcu lmvpa_calcu 
+        fruit_veg mind current_smk hv_drink cvd depress my_sbp my_blchol my_bmi my_gluc_f;
 run;
 
-/*impute the missing using the avali down and up*/
-/*impute missing covaraites*/
-proc export data=merg1 outfile='P:\yzhang\Whitehall II\AAIC\merg1.csv' dbms=csv 
-		replace;
-run;
-
-proc export data=select1 outfile='P:\yzhang\Whitehall II\AAIC\select1.csv' 
-		dbms=csv replace;
-run;
-
-proc import datafile="P:\yzhang\Whitehall II\AAIC\mydat_fill_comp.csv" 
-		out-mydat_fill_comp dbms=csv replace;
-run;
-
-/*keep all records up to and inlcuding the 1st cog impair*/
-proc sort data=mydat_fill_comp;
-	by id wave;
-run;
-
-data mydat_keep;
-	set mydat_fill_comp;
+/**********keep only until 1st cog impairment************/
+/* no mmse: data used for main analysis */
+proc sort data=merg1_select_nommse; 	by id wave; run;
+data merg1_select_nommse1;
+	set merg1_select_nommse;
 	by id;
 	retain found;
+	if first.id then found=0;
+	if found=0 then do;
+	   output;
+       if cog_imp_nommse=1 then found=1;
+	   end;
+run;
 
-	if first.id then
-		found=0;
+proc export data=merg1_select_nommse1 outfile='P:\yzhang\Whitehall II\AAIC\cog_nommse_3011_1st.csv' dbms=csv replace;
+run;
 
-	if found=0 then
-		do;
-			output;
-
-			if &out=1 then
-				found=1;
+/* use mmse: data used for sensitivity analysis */
+proc sort data=merg1_select; 	by id wave; run;
+data merg1_select1;
+	set merg1_select;
+	by id;
+	retain found;
+	if first.id then found=0;
+	if found=0 then do;
+		output;
+		if cog_imp=1 then found=1;
 		end;
 run;
 
-proc sql;
-	select count (distinct id) as n from mydat_keep;
-quit;
-
-proc means data=mydat_keep n nmiss;
-	class wave;
+proc export data=merg1_select1 outfile='P:\yzhang\Whitehall II\AAIC\cog_imp_3032_1st.csv' dbms=csv replace;
 run;
 
-proc sql;
-	select distinct wave, my_parttyp, count (distinct id) from mydat_keep group by 
-		wave, my_parttyp;
-quit;
+/*************descriptive statistics at w5*****************/
+data merg1_select_nommse2;
+	set merg1_select_nommse1;
 
-proc sql;
-	select count (distinct id) from mydat_keep group by wave;
-quit;
+	if my_SBP>=130 then bp=1;
+	else if 0<=my_SBP<130 then bp=0;
 
-data mydat_keep1;
-	set mydat_keep;
+	if my BLCHOL>=6.18 then chol=1;
+	else if 0<=my_BLCHOL<6.18 then chol=0;
 
-	if my_SBP>=140 then
-		bp=1;
-	else if 0<=my_SBP<140 then
-		bp=0;
+	if my GLUC_F>=7 then dm_g='c_diabetes';
+	else if 5.6<=my_GLUC_F<7 then dm_g='b_pre_dm';
+	else if 0<=my_GLUC_F<5.6 then dm_g='a_normal';
 
-	if my BLCHOL>-6.2 then
-		chol=1;
-	else if 0<=my_BLCHOL<6.2 then
-		chol=0;
+	if 75<=mvpa_calcu<150 then mvpa_g="b_75_150";
+	else if mvpa_calcu >=150 then mvpa_g="c_>=150";
+	else if 0<=mvpa_calcu<75 then mvpa_g="a_<75";
 
-	if my_GLUC_F>=7 then
-		dm_g='c_diabetes';
-	else if 5.6<=my_GLUC_F<7 then
-		dm_g='b_pre_dm';
-	else if 0<=my_GLUC_F<5.6 then
-		dm_g='a_normal';
+	if my_bmi <18.5 then bmi_g=1;
+	else if 18.5 <=my_bmi< 25 then bmi_g=2;
+	else if 25 <=my_bmi <30 then bmi_g=3;
+	else if 30 <=my_bmi then bmi_g=4;
 
-	if 75<=mvpa_calcu<150 then
-		mvpa_g="b_75_150";
-	else if mvpa_calcu >=150 then
-		mvpa_g="c_>=150";
-	else if 0<=mvpa_calcu<75 then
-		mvpa_g="a_<75";
+	if 75<=lmvpa_calcu<150 then lmvpa_g="b_75_150";
+	else if lmvpa_calcu >=150 then lmvpa_g "c_>=150";
+	else if 0<=lmvpa_calcu<75 then lmvpa_g="a_<75";
 
-	if my_bmi <18.5 then
-		bmi_g=1;
-	else if 18.5 <=my_bmi< 25 then
-		bmi_g=2;
-	else if 25 <=my_bmi <30 then
-		bmi_g=3;
-	else if 30 <=my_bmi then
-		bmi_g=4;
-		
-	sum_pa_all_recode=max(mvpa_calcu, sum_pa_all);
-
-	if 75<=sum_pa_all_recode<150 then
-		pa_all_g="b_75_150";
-	else if sum_pa_all_recode >=150 then
-		pa_all_g="c_>=150";
-	else if 0<=sum_pa_all_recode<75 then
-		pa_all_g="a_<75";
-
-	if mind> 8.5 then
-		mind_60=1;
-	else
-		mind 60=0;
-run;
-
-/*check for missing */
-proc means data=mydat_keep1 n nmiss;
-run;
-
-%select_var(mydat_keep1, aaic.mydat);
-
-proc export data=aaic.mydat 
-		outfile='P:\yzhang\Whitehall II\AAIC\aaic_mydat.csv' dbms=csv replace;
-run;
-
-/*descriptive statistics at w5*/
-proc means data=mydat_keep1 n mean std maxdec-1 min max;
-	var age edu my_sbp my_blchol my_gluc_f my_bmi mind mvpa_calcu 
-		sum_pa_all_recode;
+	if mind>=8.5 then mind_60=1;
+	else mind_60=0;
 	where wave=5;
 run;
 
-proc freq data=mydat_keep1;
-	table male mar_cohab income apoe4 cvd depress bp chol dm_g bmi_g current_smk 
-		hv_drink mind_60 mvpa_g pa_all_g;
+proc means data=merg1_select_nommse2 n mean std nmiss maxdec=1;
+	var age edu my_sbp my_blchol my_gluc_f my_bmi mind mvpa_calcu lmvpa_calcu;
 	where wave=5;
 run;
 
-proc sql;
-	select distinct pattern, count (distinct id) from pattern where id in (select 
-		mydat_keep1.id from mydat_keep1) group by pattern;
-quit;
+proc freq data-merg1_select_nommse2;
+	table male mar_cohab income apoe4 cvd depress bp chol dm_g bmi_g current_smk hv_drink mind_60 mvpa_g lmvpa_g;
+	where wave=5;
+run;
