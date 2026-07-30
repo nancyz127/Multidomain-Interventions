@@ -193,7 +193,7 @@ data aaic.comb1;
 	if 0<=my_mm_scor< 24 then cog1=1;
 	else if my_mm_scor>=24 then cog1=0;
 
-		keep id wave age male mar_cohab
+		keep id wave age white male edu income apoe4 mar_cohab
 		mvpa_calcu lmvpa_calcu 
 		mind current_smk hv_drink cvd depress  
 		my_mm_scor cog1 my_animals my_SWORDS my_MEM my_AH4 my_MH 
@@ -201,12 +201,11 @@ data aaic.comb1;
 		My_PART My_PARTTYP;
 run;
 
-
 /******************************* outcome*********************************** */
 /*standarize test scores*/
-proc sort data=comble; 	by wave; run;
+proc sort data=aaic.combl; 	by wave; run;
 
-proc stdize data=comble out=comb_std;
+proc stdize data=aaic.combl out=comb_std;
 	by wave;
 	var my_animals my_SWORDS my_MEM my_AH4 my_MH;
 run;
@@ -223,7 +222,7 @@ proc freq data=comb_std;
 run;
 
 /*wave 5, mmse score lower than other waves*/
-proc means data=comble;
+proc means data=combl;
 	class wave;
 	var my_mm_scor;
 run;
